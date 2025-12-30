@@ -1,45 +1,70 @@
-% Global Variables and Parameters
-PLOTTING_BOOL = 1;
-phi = deg2rad(26.56); % Tilt Angle
-u = cos(phi);
-v = sin(phi);
+output_folder_path = '../../results_pdf/';
+
+% ================= Global Variables
+run("../global_variables_load.m")
+
 failed_rw = 4; % Failed Reaction Wheel ID
-hmax = 6.995e-4; % Slew-rate boundary w/o failure = 3.5025e-4
-
-J_open = [7.18e-2 0 0; 0 7.17e-2 0; 0 0 4.15e-2]; % Satellite Inertia with Solar Panels deployed
-
-K_DGM_pyramidal = [u  0 -u  0; 0  u  0 -u; v  v  v  v ]; % 
+K_DGM_pyramidal = [sys.u  0 -sys.u  0; 0  sys.u  0 -sys.u; sys.v  sys.v  sys.v  sys.v ]; % 
 K_DGM_orthogonal = eye(3);
 
+% ================= Pre-computations
 % Generate all combinations for remaining 3 wheels
 Htilde_fail = dec2bin(0:7) - '0';
 Htilde_fail(Htilde_fail == 0) = -1;
-Htilde_fail = hmax * Htilde_fail';   % 3×8
+Htilde_fail = sys.h_sat * Htilde_fail';   % 3×8
 
 % 2^4 = 16 combinations
 Htilde4 = dec2bin(0:15) - '0';
 Htilde4(Htilde4 == 0) = -1;
-Htilde4 = hmax * Htilde4';
+Htilde4 = sys.h_sat * Htilde4';
 
 % 2^3 = 8 combinations
 Htilde3 = dec2bin(0:7) - '0';
 Htilde3(Htilde3 == 0) = -1;
-Htilde3 = hmax * Htilde3';
+Htilde3 = sys.h_sat * Htilde3';
 
 H4 = K_DGM_pyramidal * Htilde4;
 H3 = K_DGM_orthogonal * Htilde3;
-Omega4_open = J_open \ H4;
+Omega4_open = sys.J_open \ H4;
 
 Htilde4_fail = zeros(4, size(Htilde_fail,2));
 idx = setdiff(1:4, failed_rw);
 Htilde4_fail(idx, :) = Htilde_fail;
 H4_fail = K_DGM_pyramidal * Htilde4_fail;
-Omega4_failure_open = J_open \ H4_fail;
+Omega4_failure_open = sys.J_open \ H4_fail;
 
 % ============================= Plotting
-function plotCleanPolytope(data, titleStr, hmax, export_file_name)
-    % Create figure with defined size
-    fig = figure('Color', 'w', 'Units', 'inches', 'Position', [1 1 7 6]);
+function plotCleanPolytope(data, titleStr, hmax, plot_sphere, export_file_name)
+    % Create figure with defined size in pixels
+    fig = figure('Color', 'w', 'Units', 'pixels', 'Position', 3/4 * [100 100 600 600]);
+    hold on;
+    
+    if plot_sphere
+        % Calculate inscribed sphere radius
+        r = inscribed_sphere_radius(data);
+        
+        % Find center of the polytope (centroid)
+        center = mean(data, 2);
+        
+        % Generate sphere coordinates
+        [xs, ys, zs] = sphere(50);  % 50x50 sphere for smooth appearance
+        
+        % Scale and translate sphere
+        xs = r * xs + center(1);
+        ys = r * ys + center(2);
+        zs = r * zs + center(3);
+        
+        % Plot the inscribed sphere in red
+        surf(xs, ys, zs, ...
+            'FaceColor', [1 0.2 0.2], ...  % Red color
+            'EdgeColor', 'none', ...
+            'FaceAlpha', 1, ...  % Semi-transparent
+            'FaceLighting', 'gouraud', ...
+            'AmbientStrength', 0.4, ...
+            'DiffuseStrength', 0.7, ...
+            'SpecularStrength', 0.4, ...
+            'SpecularExponent', 10);
+    end
     
     % Check if data forms a cube (8 vertices)
     if size(data, 2) == 8
@@ -54,7 +79,7 @@ function plotCleanPolytope(data, titleStr, hmax, export_file_name)
             patch('Faces', K, 'Vertices', data', ...
                 'FaceColor', [0.7 0.8 0.95], ...
                 'EdgeColor', 'none', ...
-                'FaceAlpha', 0.85, ...
+                'FaceAlpha', 0.7, ...
                 'FaceLighting', 'gouraud', ...
                 'AmbientStrength', 0.3, ...
                 'DiffuseStrength', 0.8, ...
@@ -67,7 +92,7 @@ function plotCleanPolytope(data, titleStr, hmax, export_file_name)
         patch('Faces', K, 'Vertices', data', ...
             'FaceColor', [0.7 0.8 0.95], ...
             'EdgeColor', 'none', ...
-            'FaceAlpha', 0.85, ...
+            'FaceAlpha', 0.7, ...
             'FaceLighting', 'gouraud', ...
             'AmbientStrength', 0.3, ...
             'DiffuseStrength', 0.8, ...
@@ -80,32 +105,37 @@ function plotCleanPolytope(data, titleStr, hmax, export_file_name)
     ylabel('$h_y$', 'Interpreter', 'latex', 'FontSize', 12);
     zlabel('$h_z$', 'Interpreter', 'latex', 'FontSize', 12);
     title(titleStr, 'Interpreter', 'latex', 'FontSize', 14);
-    view([1.5 0.75 1]);
+    view([1 1 1]);
     
     lighting gouraud;
     camlight('headlight');
     camlight('right');
     light('Position', [-1 -1 -1], 'Style', 'infinite');
-
+    
     xlim([-hmax(1), hmax(1)])
     ylim([-hmax(2), hmax(2)])
     zlim([-hmax(3), hmax(3)])
     
     set(gca, 'FontSize', 10, 'LineWidth', 1);
     
-    if nargin == 4
-        % Paper setup for margins
-        set(fig, 'PaperUnits', 'inches');
-        set(fig, 'PaperSize', [7 6]);
-        set(fig, 'PaperPosition', [0 0 7 6]);
-        
-        % Axes margins
+    if nargin == 5
+        % Minimal margins
         ax = gca;
-        ax.Position = [0.18 0.15 0.72 0.75];
+        ax.Units = 'normalized';
+        ti = ax.TightInset;
+        ax.Position = [ti(1), ti(2), 1-ti(1)-ti(3), 1-ti(2)-ti(4)];
         
-        % Use OpenGL renderer and high-res print for lighting preservation
+        % Force rendering
+        drawnow;
+        
+        % Export settings
         set(fig, 'Renderer', 'opengl');
-        print(fig, export_file_name, '-dpdf', '-r600', '-opengl');
+        set(fig, 'InvertHardcopy', 'off');
+        
+        exportgraphics(fig, export_file_name, ...
+            'ContentType', 'image', ...
+            'Resolution', 600, ...
+            'BackgroundColor', 'white');
         
         fprintf('Exported to: %s\n', export_file_name);
     end
@@ -128,20 +158,20 @@ function plotBox(data)
         xmax ymax zmax   % 8
     ];
     
-    % Corrected face definitions with outward-pointing normals
+    % Face definitions with correct counter-clockwise ordering (viewed from outside)
     faces = [
-        1 3 4 2;  % bottom
-        5 6 8 7;  % top
-        1 2 6 5;  % front
-        4 3 7 8;  % back
-        1 5 7 3;  % left
-        2 4 8 6   % right
+        1 2 4 3;  % bottom (z=zmin, normal=-z): viewed from below
+        1 5 6 2;  % front (y=ymin, normal=-y): viewed from front
+        1 3 7 5;  % left (x=xmin, normal=-x): viewed from left
+        5 7 8 6;  % top (z=zmax, normal=+z): viewed from above
+        2 6 8 4   % right (x=xmax, normal=+x): viewed from right
+        3 4 8 7;  % back (y=ymax, normal=+y): viewed from back
     ];
     
     patch('Faces', faces, 'Vertices', vertices, ...
         'FaceColor', [0.7 0.8 0.95], ...
         'EdgeColor', 'none', ...
-        'FaceAlpha', 0.85, ...
+        'FaceAlpha', 0.7, ...
         'FaceLighting', 'gouraud', ...
         'AmbientStrength', 0.3, ...
         'DiffuseStrength', 0.8, ...
@@ -149,16 +179,12 @@ function plotBox(data)
         'SpecularExponent', 10);
 end
 
-if PLOTTING_BOOL
-    % Generate all plots
-    plotCleanPolytope(H4, 'Angular Momentum Envelope -- 4 RWs Pyramid', 2*[hmax, hmax, hmax]', 'ang_momentum_env_4RW.pdf');
-    plotCleanPolytope(H3, 'Angular Momentum Envelope -- 3 Orthogonal RWs', 2*[hmax, hmax, hmax]', 'ang_momentum_env_3RW.pdf');
-    plotCleanPolytope(Omega4_open, 'Angular Speed Envelope -- 4 RWs Pyramid (open)', 2 * (J_open \ [hmax, hmax, hmax]'), 'ang_speed_env_4RW.pdf');
-    plotCleanPolytope(Omega4_failure_open, 'Angular Momentum Envelope -- 4 RWs Pyramid with 1 RW failure', 2 * (J_open \ [hmax, hmax, hmax]'), 'ang_momentum_env_4RW_failure.pdf');
-end
+% Generate all plots
+plotCleanPolytope(H4, 'Angular Momentum Envelope -- 4 RWs Pyramid', 2*[sys.h_sat, sys.h_sat, sys.h_sat]', 0, strcat(output_folder_path, 'ang_momentum_env_4RW.pdf'));
+plotCleanPolytope(H3, 'Angular Momentum Envelope -- 3 Orthogonal RWs', 2*[sys.h_sat, sys.h_sat, sys.h_sat]', 0, strcat(output_folder_path, 'ang_momentum_env_3RW.pdf'));
+plotCleanPolytope(Omega4_open, 'Angular Speed Envelope -- 4 RWs Pyramid (open)', 2 * (sys.J_open \ [sys.h_sat, sys.h_sat, sys.h_sat]'), 1, strcat(output_folder_path, 'ang_speed_env_4RW.pdf'));
+plotCleanPolytope(Omega4_failure_open, 'Angular Speed Envelope -- 4 RWs Pyramid with 1 RW failure', 2 * (sys.J_open \ [sys.h_sat, sys.h_sat, sys.h_sat]'), 1, strcat(output_folder_path, 'ang_speed_env_4RW_failure.pdf'));
 
 % ========================================================= Slew rate
 r_Omega_open = rad2deg(inscribed_sphere_radius(Omega4_open))
-r_Omega_closed = rad2deg(inscribed_sphere_radius(Omega4_closed))
 r_Omega_open_failure = rad2deg(inscribed_sphere_radius(Omega4_failure_open))
-r_Omega_closed_failure = rad2deg(inscribed_sphere_radius(Omega4_failure_closed))
