@@ -186,5 +186,11 @@ plotCleanPolytope(Omega4_open, 'Angular Speed Envelope -- 4 RWs Pyramid (open)',
 plotCleanPolytope(Omega4_failure_open, 'Angular Speed Envelope -- 4 RWs Pyramid with 1 RW failure', 2 * (sys.J_open \ [sys.h_sat, sys.h_sat, sys.h_sat]'), 1, strcat(output_folder_path, 'ang_speed_env_4RW_failure.pdf'));
 
 % ========================================================= Slew rate
-r_Omega_open = rad2deg(inscribed_sphere_radius(Omega4_open))
-r_Omega_open_failure = rad2deg(inscribed_sphere_radius(Omega4_failure_open))
+fprintf("============= Absolute ===============\n");
+fprintf('r = %.4f deg/s\n', rad2deg(inscribed_sphere_radius(Omega4_open)));
+fprintf('r_fail = %.4f deg/s\n', rad2deg(inscribed_sphere_radius(Omega4_failure_open)));
+fprintf("============= Normalized ===============\n");
+J_iso = trace(sys.J_open) / 3;
+omega_ref = (sys.h_sat / J_iso);
+fprintf('r = %.2f \n', inscribed_sphere_radius(Omega4_open) / omega_ref);
+fprintf('r_fail = %.2f \n', inscribed_sphere_radius(Omega4_failure_open) / omega_ref);
